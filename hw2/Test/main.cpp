@@ -30,6 +30,7 @@
 typedef Angel::vec3  color3;
 typedef Angel::vec3  point3;
 
+// Utility type for passing VBOs to render
 struct ObjBuffer {
 	GLuint id;
 	int size;
@@ -141,7 +142,7 @@ void init()
 	std::cout << "Enter an object file: \n";
 	std::string file;
 	std::getline(std::cin, file);
-	if (file.size() == 0) file = "sphere.128";
+	//if (file.size() == 0) file = "sphere.128";
 	sphere = read_obj(file.c_str());
 
 	floor_buf = makePlane(
@@ -278,20 +279,15 @@ void display( void )
 void idle (void)
 {
 	if (rollFlag)
-		angleCounter+=0.001f;
+		angleCounter+=0.001f; //roll speed
 	//ballMatrix = RollAnimation(angleCounter);
     glutPostRedisplay();
 }
 //----------------------------------------------------------------------------
 void mouse(int button, int state, int x, int y) {
-	static bool down = false; //trigger once per click
 	if (button == GLUT_RIGHT_BUTTON) {
-		if (state == GLUT_DOWN && !down) {
-			down = true;
-			rollFlag = 1 - rollFlag;
-		}
-		else if (state == GLUT_UP && down){
-			down = false;
+		if (state == GLUT_DOWN) {
+			rollFlag = 1 - rollFlag; //roll sphere toggle
 		}
 	}
 }
@@ -335,10 +331,10 @@ void keyboard(unsigned char key, int x, int y)
 void menu(int choice) {
 	switch (choice) {
 	case MENU_QUIT:
-		exit(0);
+		exit(EXIT_SUCCESS);
 	case MENU_VIEW_DEFAULT:
-		rollFlag = 1;
-		eye = init_eye;
+		rollFlag = 1; //roll ball
+		eye = init_eye; //reset view
 		break;
 	}
 }
