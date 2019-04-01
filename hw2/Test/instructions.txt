@@ -1,2 +1,0 @@
-Run with visual studio 15.9.7
-C++ 2017

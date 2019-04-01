@@ -779,7 +779,7 @@ mat4 Rotate(const GLfloat angle, const GLfloat x, const GLfloat y, const GLfloat
     const GLfloat y2 = y1 * y1;
     const GLfloat z2 = z1 * z1;
 
-    float rads = float(angle) * 0.0174532925f;
+	float rads = float(angle);// *0.0174532925f;
     const float c = cosf(rads);
     const float s = sinf(rads);
     const float omc = 1.0f - c;

@@ -44,21 +44,25 @@ ObjBuffer floor_buf;  /* vertex buffer object id for floor */
 ObjBuffer sphere;
 ObjBuffer axis;
 
+//mat4 ballMatrix = mat4(1.0f);
+
 // Projection transformation parameters
 GLfloat  fovy = 45.0;  // Field-of-view in Y direction angle (in degrees)
 GLfloat  aspect;       // Viewport aspect ratio
 GLfloat  zNear = 0.05f, zFar = 30.0;
 
-GLfloat angle = 0.0; // rotation angle in degrees
+GLfloat angleCounter = 0.0; // rotation angle in degrees
 vec4 init_eye(7.0, 3.0, -10.0, 1.0); // initial viewer position
-//vec4 init_eye(3.0, 2.0, 0.0, 1.0); // initial viewer position
 vec4 eye = init_eye;               // current viewer position
 
 int animationFlag = 1; // 1: animation; 0: non-animation. Toggled by key 'a' or 'A'
-
+int rollFlag = 1;		// 1: animation; 0: non-animation. Toggled by right mouse button down
 int sphereFlag = 1;   // 1: solid sphere; 0: wireframe sphere. Toggled by key 'c' or 'C'
 int floorFlag = 1;  // 1: solid floor; 0: wireframe floor. Toggled by key 'f' or 'F'
 
+int menuId;
+#define MENU_QUIT 0
+#define MENU_VIEW_DEFAULT 1
 
 void registerObj(vec3* buf_points, vec3* buf_colors, GLuint& buf_id, int size) {
 	size *= sizeof(vec3);
@@ -113,6 +117,7 @@ ObjBuffer read_obj(const char* file)
 				fs >> p;
 				//std::cout << p << std::endl;
 				obj_array[i] = p;
+				//obj_colors[i] = p; // RAINBOW
 				obj_colors[i] = { 1.0f, 0.84f, 0.0f };
 				i++;
 			}
@@ -136,6 +141,7 @@ void init()
 	std::cout << "Enter an object file: \n";
 	std::string file;
 	std::getline(std::cin, file);
+	if (file.size() == 0) file = "sphere.128";
 	sphere = read_obj(file.c_str());
 
 	floor_buf = makePlane(
@@ -149,7 +155,6 @@ void init()
 
  // Load shaders and create a shader program (to be used in display())
     program = InitShader("vshader42.glsl", "fshader42.glsl");
-    
     glEnable( GL_DEPTH_TEST );
     glClearColor( 0.529f, 0.807f, 0.92f, 0.0);
     glLineWidth(2.0);
@@ -184,6 +189,39 @@ void drawObj(ObjBuffer obj, unsigned int mode)
     glDisableVertexAttribArray(vPosition);
     glDisableVertexAttribArray(vColor);
 }
+//Rotate in the direction of delta by angle (radians)
+mat4 Roll(const vec3& delta, float angle, float radius) {
+	vec3 rotvec = cross(vec3(0, 1, 0),delta);
+	// Note I changed Rotate to use radians instead
+	return  Rotate(angle, rotvec.x, rotvec.y, rotvec.z);
+}
+//Handles rolling animation to arbitrary points
+mat4 RollAnimation(float angle, float radius = 1.0f) {
+	static vec3 keyframes[] = {
+		vec3(-4, 1, 4), 
+		vec3(-1, 1, -4),
+		vec3(3, 1, 5 ), };
+	static int size = sizeof(keyframes) / sizeof(vec3);
+	static int step = 0;
+	static float lastAngle = 0.0f;
+	static mat4 savedRot = mat4(1.0f);
+	// end static
+	float angleDelta = angle - lastAngle;
+	vec3 a = keyframes[step%size];
+	vec3 b = keyframes[(step+1)%size];
+	vec3 distanceDelta = b-a;
+	float distance = length(distanceDelta);
+	float progress = angleDelta * radius / distance;
+	if (progress > 1.0f) {
+		savedRot = Roll(distanceDelta, distance/radius, radius) * savedRot;
+		lastAngle += distance / radius;
+		step += 1;
+		return RollAnimation(angle, radius);
+	}
+	mat4 currentRot = Roll(distanceDelta, angleDelta, radius);
+	return Translate(a + (distanceDelta * progress)) * currentRot * savedRot;
+}
+
 //----------------------------------------------------------------------------
 void display( void )
 {
@@ -203,15 +241,15 @@ void display( void )
 
 /*---  Set up and pass on Model-View matrix to the shader ---*/
     // eye is a global variable of vec4 set to init_eye and updated by keyboard()
-    vec4    at(-7.0, -3.0, 10.0, 0.0);
-	//vec4    at(0.0, 0.0, 0.0, 1.0);
+	vec4    at(0.0, 0.0, 0.0, 1.0);
     vec4    up(0.0, 1.0, 0.0, 0.0);
 
 	mat4 la = LookAt(eye, at, up);
 	mat4  mv;
 
 /*----- Set Up the Model-View matrix for the sphere -----*/
-    mv = la * Translate(-4.0f, 1.0f, 4.0f) * Rotate(angle, 0.0, 0.0, 2.0);
+	//mv = la * ballMatrix; 
+	mv = la * RollAnimation(angleCounter);
     glUniformMatrix4fv(model_view, 1, GL_TRUE, mv); // GL_TRUE: matrix is row-major
     if (sphereFlag != 1) // Filled sphere
        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -239,9 +277,23 @@ void display( void )
 //---------------------------------------------------------------------------
 void idle (void)
 {
-    //angle += 0.02;
-    angle += 1.0;    //YJC: change this value to adjust the sphere rotation speed.
+	if (rollFlag)
+		angleCounter+=0.001f;
+	//ballMatrix = RollAnimation(angleCounter);
     glutPostRedisplay();
+}
+//----------------------------------------------------------------------------
+void mouse(int button, int state, int x, int y) {
+	static bool down = false; //trigger once per click
+	if (button == GLUT_RIGHT_BUTTON) {
+		if (state == GLUT_DOWN && !down) {
+			down = true;
+			rollFlag = 1 - rollFlag;
+		}
+		else if (state == GLUT_UP && down){
+			down = false;
+		}
+	}
 }
 //----------------------------------------------------------------------------
 void keyboard(unsigned char key, int x, int y)
@@ -259,7 +311,7 @@ void keyboard(unsigned char key, int x, int y)
         case 'Z': eye[2] += 1.0; break;
 	case 'z': eye[2] -= 1.0; break;
 
-        case 'a': case 'A': // Toggle between animation and non-animation
+        case 'b': case 'B': // Toggle between animation and non-animation
 	    animationFlag = 1 -  animationFlag;
             if (animationFlag == 1) glutIdleFunc(idle);
             else                    glutIdleFunc(NULL);
@@ -278,6 +330,17 @@ void keyboard(unsigned char key, int x, int y)
 	    break;
     }
     glutPostRedisplay();
+}
+//----------------------------------------------------------------------------
+void menu(int choice) {
+	switch (choice) {
+	case MENU_QUIT:
+		exit(0);
+	case MENU_VIEW_DEFAULT:
+		rollFlag = 1;
+		eye = init_eye;
+		break;
+	}
 }
 //----------------------------------------------------------------------------
 void reshape(int width, int height)
@@ -321,6 +384,13 @@ int main( int argc, char **argv )
     glutReshapeFunc(reshape);
     glutIdleFunc(idle);
     glutKeyboardFunc(keyboard);
+	glutMouseFunc(mouse);
+	
+	menuId = glutCreateMenu(menu);
+	glutAddMenuEntry("Default View Point", MENU_VIEW_DEFAULT);
+	glutAddMenuEntry("Quit", MENU_QUIT);
+	glutAttachMenu(GLUT_LEFT_BUTTON);
+
 
     init();
     glutMainLoop();
