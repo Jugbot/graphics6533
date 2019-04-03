@@ -45,7 +45,7 @@ ObjBuffer floor_buf;  /* vertex buffer object id for floor */
 ObjBuffer sphere;
 ObjBuffer axis;
 
-//mat4 ballMatrix = mat4(1.0f);
+mat4 ballMatrix = mat4(1.0f);
 
 // Projection transformation parameters
 GLfloat  fovy = 45.0;  // Field-of-view in Y direction angle (in degrees)
@@ -249,8 +249,7 @@ void display( void )
 	mat4  mv;
 
 /*----- Set Up the Model-View matrix for the sphere -----*/
-	//mv = la * ballMatrix; 
-	mv = la * RollAnimation(angleCounter);
+	mv = la * ballMatrix; 
     glUniformMatrix4fv(model_view, 1, GL_TRUE, mv); // GL_TRUE: matrix is row-major
     if (sphereFlag != 1) // Filled sphere
        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -280,7 +279,7 @@ void idle (void)
 {
 	if (rollFlag)
 		angleCounter+=0.001f; //roll speed
-	//ballMatrix = RollAnimation(angleCounter);
+	ballMatrix = RollAnimation(angleCounter);
     glutPostRedisplay();
 }
 //----------------------------------------------------------------------------
