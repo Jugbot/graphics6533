@@ -131,9 +131,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
     <ClCompile Include="InitShader.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
@@ -142,6 +139,9 @@
     <ClInclude Include="CheckError.h" />
     <ClInclude Include="mat-yjc-new.h" />
     <ClInclude Include="vec.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
