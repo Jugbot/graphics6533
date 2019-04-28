@@ -193,8 +193,7 @@ void drawObj(ObjBuffer obj, unsigned int mode)
 //Rotate in the direction of delta by angle (radians)
 mat4 Roll(const vec3& delta, float angle, float radius) {
 	vec3 rotvec = cross(vec3(0, 1, 0),delta);
-	// Note I changed Rotate to use radians instead
-	return  Rotate(angle, rotvec.x, rotvec.y, rotvec.z);
+	return  Rotate(angle*180.f/M_PI, rotvec.x, rotvec.y, rotvec.z);
 }
 //Handles rolling animation to arbitrary points
 mat4 RollAnimation(float angle, float radius = 1.0f) {
@@ -307,9 +306,7 @@ void keyboard(unsigned char key, int x, int y)
 	case 'z': eye[2] -= 1.0; break;
 
         case 'b': case 'B': // Toggle between animation and non-animation
-	    animationFlag = 1 -  animationFlag;
-            if (animationFlag == 1) glutIdleFunc(idle);
-            else                    glutIdleFunc(NULL);
+			glutIdleFunc(idle);
             break;
 	   
         case 'c': case 'C': // Toggle between filled and wireframe sphere
@@ -377,7 +374,8 @@ int main( int argc, char **argv )
 
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
-    glutIdleFunc(idle);
+	ballMatrix = RollAnimation(0.f); //calculate transformations once
+    //glutIdleFunc(idle);
     glutKeyboardFunc(keyboard);
 	glutMouseFunc(mouse);
 	
