@@ -56,14 +56,22 @@ GLfloat angleCounter = 0.0; // rotation angle in degrees
 vec4 init_eye(7.0, 3.0, -10.0, 1.0); // initial viewer position
 vec4 eye = init_eye;               // current viewer position
 
+//vec4 light_source(0.f, 3.f, 0.f, 0.f);
+vec4 light_source(-14.f, 12.f, -3.f, 1.f);
+vec4 shadow_color(.25f, .25f, .25f, .65f);
+
 int animationFlag = 1; // 1: animation; 0: non-animation. Toggled by key 'a' or 'A'
 int rollFlag = 1;		// 1: animation; 0: non-animation. Toggled by right mouse button down
 int sphereFlag = 1;   // 1: solid sphere; 0: wireframe sphere. Toggled by key 'c' or 'C'
 int floorFlag = 1;  // 1: solid floor; 0: wireframe floor. Toggled by key 'f' or 'F'
+int shadowFlag = 1;
 
-int menuId;
-#define MENU_QUIT 0
-#define MENU_VIEW_DEFAULT 1
+enum menuOptions { MENU_QUIT, MENU_VIEW_DEFAULT, 
+	MENU_ENABLE_WIREFRAME,
+	MENU_SHADOW_ON, MENU_SHADOW_OFF, 
+	MENU_LIGHTING_ON, MENU_LIGHTING_OFF,
+	MENU_SHADING_SMOOTH, MENU_SHADING_FLAT
+};
 
 void registerObj(vec3* buf_points, vec3* buf_colors, GLuint& buf_id, int size) {
 	size *= sizeof(vec3);
@@ -142,7 +150,7 @@ void init()
 	std::cout << "Enter an object file: \n";
 	std::string file;
 	std::getline(std::cin, file);
-	//if (file.size() == 0) file = "sphere.128";
+	if (file.size() == 0) file = "sphere.128";
 	sphere = read_obj(file.c_str());
 
 	floor_buf = makePlane(
@@ -158,6 +166,7 @@ void init()
     program = InitShader("vshader42.glsl", "fshader42.glsl");
     glEnable( GL_DEPTH_TEST );
     glClearColor( 0.529f, 0.807f, 0.92f, 0.0);
+	glColor4f(shadow_color[0], shadow_color[1], shadow_color[2],shadow_color[3]);
     glLineWidth(2.0);
 }
 //----------------------------------------------------------------------------
@@ -190,6 +199,74 @@ void drawObj(ObjBuffer obj, unsigned int mode)
     glDisableVertexAttribArray(vPosition);
     glDisableVertexAttribArray(vColor);
 }
+//vec4 * transpose(vec4)
+mat4 vmult(vec4 v1, vec4 v2) {
+	return mat4(
+		v1[0] * v2[0],
+		v1[0] * v2[1],
+		v1[0] * v2[2],
+		v1[0] * v2[3],
+
+		v1[1] * v2[0],
+		v1[1] * v2[1],
+		v1[1] * v2[2],
+		v1[1] * v2[3],
+
+		v1[2] * v2[0],
+		v1[2] * v2[1],
+		v1[2] * v2[2],
+		v1[2] * v2[3],
+
+		v1[3] * v2[0],
+		v1[3] * v2[1],
+		v1[3] * v2[2],
+		v1[3] * v2[3]);
+}
+
+mat4 shadowMatrix2() {
+	vec4 normal(0.f, 1.f, 0.f, 0.f);
+
+	return dot(light_source, normal) * mat4(1.f) - vmult(normal, light_source);
+	//return dot(normal, light_source)*mat4(1.f) -
+	/* 
+		p=l-(d+n*l)/(n*(v-l)) (v-l)	
+	*/
+}
+
+mat4 shadowMatrix() {
+	return mat4(vec4(light_source[1],-light_source[0],0.f,0.f),
+				vec4(0.f),
+				vec4(0.f,-light_source[2],light_source[1], 0.f),
+				vec4(0.f,-1.f,0.f,light_source[1])
+				);
+}
+
+void drawShadow(ObjBuffer obj, unsigned int mode)
+{
+
+	glBindBuffer(GL_ARRAY_BUFFER, obj.id);
+	/*----- Set up vertex attribute arrays for each vertex attribute -----*/
+	GLuint vPosition = glGetAttribLocation(program, "vPosition");
+	glEnableVertexAttribArray(vPosition);
+	glVertexAttribPointer(vPosition, 3, GL_FLOAT, GL_FALSE, 0,
+		BUFFER_OFFSET(0));
+/*
+	GLuint vColor = glGetAttribLocation(program, "vColor");
+	glEnableVertexAttribArray(vColor);
+	glVertexAttribPointer(vColor, 3, GL_FLOAT, GL_FALSE, 0,
+		BUFFER_OFFSET(sizeof(point3) * obj.size));*/
+	// the offset is the (total) size of the previous vertex attribute array(s)
+
+  /* Draw a sequence of geometric objs (triangles) from the vertex buffer
+	 (using the attributes specified in each enabled vertex attribute array) */
+	glDrawArrays(mode, 0, obj.size);
+
+	/*--- Disable each vertex attribute array being enabled ---*/
+	glDisableVertexAttribArray(vPosition);
+	//glDisableVertexAttribArray(vColor);
+}
+
+
 //Rotate in the direction of delta by angle (radians)
 mat4 Roll(const vec3& delta, float angle, float radius) {
 	vec3 rotvec = cross(vec3(0, 1, 0),delta);
@@ -247,14 +324,16 @@ void display( void )
 	mat4 la = LookAt(eye, at, up);
 	mat4  mv;
 
+
 /*----- Set Up the Model-View matrix for the sphere -----*/
-	mv = la * ballMatrix; 
-    glUniformMatrix4fv(model_view, 1, GL_TRUE, mv); // GL_TRUE: matrix is row-major
-    if (sphereFlag != 1) // Filled sphere
-       glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    else              // Wireframe sphere
-       glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    drawObj(sphere, GL_TRIANGLES);  // draw the sphere
+mv = la * ballMatrix;
+glUniformMatrix4fv(model_view, 1, GL_TRUE, mv); // GL_TRUE: matrix is row-major
+if (sphereFlag != 1) // Filled sphere
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+else              // Wireframe sphere
+	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+drawObj(sphere, GL_TRIANGLES);  // draw the sphere
+
 
 /*----- Set up the Mode-View matrix for the floor -----*/
 	mv = la;
@@ -264,7 +343,17 @@ void display( void )
        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     else              // Wireframe floor
        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    drawObj(floor_buf, GL_TRIANGLES);  // draw the floor
+	glDepthMask(GL_FALSE);
+	drawObj(floor_buf, GL_TRIANGLES);  // draw the floor
+	glDepthMask(GL_TRUE);
+	if (shadowFlag) {
+		mv = la * shadowMatrix() * ballMatrix;
+		glUniformMatrix4fv(model_view, 1, GL_TRUE, mv);
+		drawShadow(sphere, GL_TRIANGLES);
+	}
+	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+	drawObj(floor_buf, GL_TRIANGLES);  // draw the floor
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
 /*----- Set up the Mode-View matrix for the axis -----*/
 	mv = la * Scale(10.0f);
@@ -332,6 +421,15 @@ void menu(int choice) {
 		rollFlag = 1; //roll ball
 		eye = init_eye; //reset view
 		break;
+	case MENU_SHADOW_ON:
+		shadowFlag = 1;
+		break;
+	case MENU_SHADOW_OFF:
+		shadowFlag = 0;
+		break;
+	case MENU_ENABLE_WIREFRAME:
+		sphereFlag = 1 - sphereFlag;
+		break;
 	}
 }
 //----------------------------------------------------------------------------
@@ -378,10 +476,23 @@ int main( int argc, char **argv )
     //glutIdleFunc(idle);
     glutKeyboardFunc(keyboard);
 	glutMouseFunc(mouse);
-	
-	menuId = glutCreateMenu(menu);
+
+	int lightingMenuId = glutCreateMenu(menu);
+	glutAddMenuEntry("Yes", MENU_SHADOW_ON);
+	glutAddMenuEntry("No", MENU_SHADOW_OFF);
+	int shadowMenuId = glutCreateMenu(menu);
+	glutAddMenuEntry("Yes", MENU_LIGHTING_ON);
+	glutAddMenuEntry("No", MENU_LIGHTING_OFF);
+	int shadingMenuId = glutCreateMenu(menu);
+	glutAddMenuEntry("Yes", MENU_SHADING_SMOOTH);
+	glutAddMenuEntry("No", MENU_SHADING_FLAT);
+	glutCreateMenu(menu);
 	glutAddMenuEntry("Default View Point", MENU_VIEW_DEFAULT);
 	glutAddMenuEntry("Quit", MENU_QUIT);
+	glutAddMenuEntry("Wireframe", MENU_ENABLE_WIREFRAME);
+	glutAddMenuEntry("Shading", shadingMenuId);
+	glutAddSubMenu("Shadow", shadowMenuId);
+	glutAddSubMenu("Lighting", lightingMenuId);
 	glutAttachMenu(GLUT_LEFT_BUTTON);
 
 
