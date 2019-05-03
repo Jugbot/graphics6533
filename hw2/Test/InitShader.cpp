@@ -75,8 +75,9 @@ InitShader(const char* vShaderFile, const char* fShaderFile)
 			glGetShaderInfoLog( shader, logSize, NULL, logMsg );
 			std::cerr << logMsg << std::endl;
 			delete [] logMsg;
-
-			exit( EXIT_FAILURE );
+			char _;
+			std::cin >> _;
+			//exit( EXIT_FAILURE );
 		}
 		else printf("Successfully compiled %s\n", s.filename);
 

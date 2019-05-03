@@ -29,33 +29,33 @@ void main()
     // Transform vertex  position into eye coordinates
     vec3 pos = (ModelView * vPosition).xyz;
 	
-    vec3 L = normalize( LightPosition.xyz - pos );
+    vec3 Light_Normal = normalize( LightPosition.xyz - pos );
     vec3 E = normalize( -pos );
-    vec3 H = normalize( L + E );
+    vec3 H = normalize( Light_Normal + E );
 
     // Transform vertex normal into eye coordinates
-      // vec3 N = normalize( ModelView*vec4(vNormal, 0.0) ).xyz;
-    vec3 N = normalize(Normal_Matrix * vNormal);
+      // vec3 Obj_Normal = normalize( ModelView*vec4(vNormal, 0.0) ).xyz;
+    vec3 Obj_Normal = normalize(Normal_Matrix * vNormal);
 
-// YJC Note: N must use the one pointing *toward* the viewer
-//     ==> If (N dot E) < 0 then N must be changed to -N
-//
-   if ( dot(N, E) < 0 ) N = -N;
+	// YJC Note: Obj_Normal must use the one pointing *toward* the viewer
+	//     ==> If (Obj_Normal dot E) < 0 then Obj_Normal must be changed to -Obj_Normal
+	//
+	if ( dot(Obj_Normal, E) < 0 ) Obj_Normal = -Obj_Normal;
 
 
-/*--- To Do: Compute attenuation ---*/
-float attenuation = 1.0; 
+	/*--- To Do: Compute attenuation ---*/
+	float attenuation = 1.0; 
 
- // Compute terms in the illumination equation
+	 // Compute terms in the illumination equation
     vec4 ambient = AmbientProduct;
 
-    float d = max( dot(L, N), 0.0 );
+    float d = max( dot(Light_Normal, Obj_Normal), 0.0 );
     vec4  diffuse = d * DiffuseProduct;
 
-    float s = pow( max(dot(N, H), 0.0), Shininess );
+    float s = pow( max(dot(Obj_Normal, H), 0.0), Shininess );
     vec4  specular = s * SpecularProduct;
     
-    if( dot(L, N) < 0.0 ) {
+    if( dot(Light_Normal, Obj_Normal) < 0.0 ) {
 	specular = vec4(0.0, 0.0, 0.0, 1.0);
     } 
 

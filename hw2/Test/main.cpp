@@ -27,14 +27,15 @@
 #include "Angel-yjc.h"
 #include <string>
 
-typedef Angel::vec3  color3;
+typedef Angel::vec4  color4;
 typedef Angel::vec3  point3;
 
 // Utility type for passing VBOs to render
 struct ObjBuffer {
 	GLuint id;
 	int size;
-	ObjBuffer(GLuint id = 0, int size = 0) : id(id), size(size) {}
+	vec4 ambient, diffuse, specular;
+	float shininess;
 };
 
 GLuint Angel::InitShader(const char* vShaderFile, const char* fShaderFile);
@@ -43,6 +44,7 @@ GLuint program;       /* shader program object id */
 
 ObjBuffer floor_buf;  /* vertex buffer object id for floor */
 ObjBuffer sphere;
+ObjBuffer sphere_shadow;
 ObjBuffer axis;
 
 mat4 ballMatrix = mat4(1.0f);
@@ -65,21 +67,25 @@ int rollFlag = 1;		// 1: animation; 0: non-animation. Toggled by right mouse but
 int sphereFlag = 1;   // 1: solid sphere; 0: wireframe sphere. Toggled by key 'c' or 'C'
 int floorFlag = 1;  // 1: solid floor; 0: wireframe floor. Toggled by key 'f' or 'F'
 int shadowFlag = 1;
+int lightingFlag = 1;
+int shadingFlag = 1;
+int sourceFlag = 0;
 
 enum menuOptions { MENU_QUIT, MENU_VIEW_DEFAULT, 
 	MENU_ENABLE_WIREFRAME,
 	MENU_SHADOW_ON, MENU_SHADOW_OFF, 
 	MENU_LIGHTING_ON, MENU_LIGHTING_OFF,
-	MENU_SHADING_SMOOTH, MENU_SHADING_FLAT
+	MENU_SHADING_SMOOTH, MENU_SHADING_FLAT,
+	MENU_SOURCE_POINT, MENU_SOURCE_SPOT
 };
 
-void registerObj(vec3* buf_points, vec3* buf_colors, GLuint& buf_id, int size) {
-	size *= sizeof(vec3);
+void registerObj(vec3* buf_points, vec4* buf_colors, vec3* buf_normals, GLuint& buf_id, int size) {
 	glGenBuffers(1, &buf_id);
 	glBindBuffer(GL_ARRAY_BUFFER, buf_id);
-	glBufferData(GL_ARRAY_BUFFER, size * 2, NULL, GL_STATIC_DRAW);
-	glBufferSubData(GL_ARRAY_BUFFER, 0, size, buf_points);
-	glBufferSubData(GL_ARRAY_BUFFER, size, size, buf_colors);
+	glBufferData(GL_ARRAY_BUFFER, size  * (sizeof(vec3) + sizeof(vec4) + sizeof(vec3)), NULL, GL_STATIC_DRAW);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, size * sizeof(vec3), buf_points);
+	glBufferSubData(GL_ARRAY_BUFFER, size * sizeof(vec3), size * sizeof(vec4), buf_colors);
+	glBufferSubData(GL_ARRAY_BUFFER, size * sizeof(vec3) + size * sizeof(vec4), size * sizeof(vec3), buf_normals);
 }
 
 ObjBuffer makeAxis() {
@@ -88,59 +94,76 @@ ObjBuffer makeAxis() {
 		{0.0f,0.0f,0.0f}, {0.0f,1.0f,0.0f},
 		{0.0f,0.0f,0.0f}, {0.0f,0.0f,1.0f}
 	};
-	color3 colors[6] = {
-		{1.0f,0.0f,0.0f}, {1.0f,0.0f,0.0f},
-		{1.0f,0.0f,01.0f}, {1.0f,0.0f,1.0f},
-		{0.0f,0.0f,1.0f}, {0.0f,0.0f,1.0f},
+	color4 colors[6] = {
+		{1.0f,0.0f,0.0f,1.0f}, {1.0f,0.0f,0.0f,1.0f},
+		{1.0f,0.0f,1.0f,1.0f}, {1.0f,0.0f,1.0f,1.0f},
+		{0.0f,0.0f,1.0f,1.0f}, {0.0f,0.0f,1.0f,1.0f},
 	};
 	GLuint id;
-	registerObj(points, colors, id, 6);
-	return { id, 6 };
+	registerObj(points, colors, points, id, 6);
+	ObjBuffer obj = { id, 6 };
+	obj.ambient = { 1.0f,0.0f,0.0f };
+	return obj;
 }
 
-ObjBuffer makePlane(point3 a, point3 b, point3 c, point3 d, color3 e) {
-	point3 floor_points[6] = { a,b,c,c,d,a };
-	color3 floor_colors[6] = { e,e,e,e,e,e };
+ObjBuffer makePlane(point3 p1, point3 p2, point3 p3, point3 p4) {
+	color4 c { 0.0, 1.0, 0.0, 1.0 };
+	vec3 n = normalize(cross(p1-p2,p1-p3));
+	point3 floor_points[6] = { p1,p2,p3,p3,p4,p1 };
+	vec3 floor_normals[6] = { n,n,n,n,n,n };
+	color4 floor_colors[6] = { c,c,c,c,c,c };
 	GLuint id;
-	registerObj(floor_points, floor_colors, id, 6);
-	return { id, 6 };
+	registerObj(floor_points, floor_colors, floor_normals, id, 6);
+	return { id, 6, {0.2, 0.2, 0.2, 1.0}, {0.0, 1.0, 0.0, 1.0}, {0.0, 0.0, 0.0, 1.0} };
 }
 
-ObjBuffer read_obj(const char* file)
+ObjBuffer read_obj(const char* file, color4 color)
 {
 	std::ifstream fs;
 	fs.open(file);
-	ObjBuffer obj = { 0, 0 };
+	ObjBuffer obj;
 	if (fs.is_open()) {
 		int total;
 		fs >> total;
 		total *= 3;
 		point3 *obj_array = new point3[total];
-		color3 *obj_colors = new color3[total];
+		vec3 *obj_normals = new vec3[total];
+		color4 *obj_colors = new color4[total];
 		int verts;
 		int i = 0;
 		while (fs >> verts) {
-			//std::cout << verts << std::endl;
-			for (int j = 0; j < verts; j++) {
-				vec3 p;
-				fs >> p;
-				//std::cout << p << std::endl;
-				obj_array[i] = p;
-				//obj_colors[i] = p; // RAINBOW
-				obj_colors[i] = { 1.0f, 0.84f, 0.0f };
-				i++;
-			}
+			vec3 p1;
+			fs >> p1;
+			vec3 p2;
+			fs >> p2;
+			vec3 p3;
+			fs >> p3;
+			vec3 n = normalize(cross(p2-p1, p3 - p1));
+			obj_normals[i] = n;
+			obj_colors[i] = color;
+			obj_array[i++] = p1;
+			obj_normals[i] = n;
+			obj_colors[i] = color;
+			obj_array[i++] = p2;
+			obj_normals[i] = n;
+			obj_colors[i] = color;
+			obj_array[i++] = p3;
 		}
 		GLuint buf_id;
-		registerObj(obj_array, obj_colors, buf_id, total);
+		registerObj(obj_array, obj_colors, obj_normals, buf_id, total);
 		obj = { buf_id, total };
 		delete[] obj_array;
+		delete[] obj_normals;
 		delete[] obj_colors;
 	}
 	else {
 		std::cout << "no file read\n";
 	}
 	fs.close();
+	obj.ambient = { 0.2, 0.2, 0.2, 1.0 };
+	obj.specular = { 1.0, 0.84, 0.0, 1.0 };
+	obj.diffuse = { 1.0, 0.84, 0.0, 1.0 };
+	obj.shininess = 125.f;
 	return obj;
 }
 //----------------------------------------------------------------------------
@@ -150,15 +173,15 @@ void init()
 	std::cout << "Enter an object file: \n";
 	std::string file;
 	std::getline(std::cin, file);
-	if (file.size() == 0) file = "sphere.128";
-	sphere = read_obj(file.c_str());
+	if (file.size() == 0) file = "sphere.1024";
+	sphere = read_obj(file.c_str(), { 1.0, 0.84, 0.0, 1.0});
+	sphere_shadow = read_obj(file.c_str(), { 0.25, 0.25, 0.25, 0.65 });
 
 	floor_buf = makePlane(
 		{ 5.0f,0.0f,8.0f },
 		{ 5.0f,0.0f,-4.0f },
 		{ -5.0f,0.0f,-4.0f },
-		{ -5.0f,0.0f,8.0f },
-		{ 0.0f,1.0f,0.0f });
+		{ -5.0f,0.0f,8.0f });
 
 	axis = makeAxis();
 
@@ -166,7 +189,6 @@ void init()
     program = InitShader("vshader42.glsl", "fshader42.glsl");
     glEnable( GL_DEPTH_TEST );
     glClearColor( 0.529f, 0.807f, 0.92f, 0.0);
-	glColor4f(shadow_color[0], shadow_color[1], shadow_color[2],shadow_color[3]);
     glLineWidth(2.0);
 }
 //----------------------------------------------------------------------------
@@ -182,14 +204,20 @@ void drawObj(ObjBuffer obj, unsigned int mode)
     /*----- Set up vertex attribute arrays for each vertex attribute -----*/
     GLuint vPosition = glGetAttribLocation(program, "vPosition");
     glEnableVertexAttribArray(vPosition);
-    glVertexAttribPointer(vPosition, 3, GL_FLOAT, GL_FALSE, 0, 
-			  BUFFER_OFFSET(0));
-
-    GLuint vColor = glGetAttribLocation(program, "vColor"); 
-    glEnableVertexAttribArray(vColor);
-    glVertexAttribPointer(vColor, 3, GL_FLOAT, GL_FALSE, 0, 
-			  BUFFER_OFFSET(sizeof(point3) * obj.size) ); 
-      // the offset is the (total) size of the previous vertex attribute array(s)
+	glVertexAttribPointer(vPosition, 3, GL_FLOAT, GL_FALSE, 0,
+		BUFFER_OFFSET(0));
+	GLuint vColor = glGetAttribLocation(program, "vColor");
+	glEnableVertexAttribArray(vColor);
+	glVertexAttribPointer(vColor, 4, GL_FLOAT, GL_FALSE, 0,
+		BUFFER_OFFSET(sizeof(point3) * obj.size));
+	GLuint vNormal = glGetAttribLocation(program, "vNormal");
+	glEnableVertexAttribArray(vNormal);
+	glVertexAttribPointer(vNormal, 3, GL_FLOAT, GL_FALSE, 0,
+		BUFFER_OFFSET((sizeof(point3) + sizeof(color4)) * obj.size));
+	glUniform4f(glGetUniformLocation(program, "ambient"), obj.ambient.x, obj.ambient.y, obj.ambient.z, obj.ambient.w);
+	glUniform4f(glGetUniformLocation(program, "diffuse"), obj.diffuse.x, obj.diffuse.y, obj.diffuse.z, obj.diffuse.w);
+	glUniform4f(glGetUniformLocation(program, "specular"), obj.specular.x, obj.specular.y, obj.specular.z, obj.specular.w);
+	glUniform1f(glGetUniformLocation(program, "shininess"), obj.shininess);
 
     /* Draw a sequence of geometric objs (triangles) from the vertex buffer
        (using the attributes specified in each enabled vertex attribute array) */
@@ -197,41 +225,18 @@ void drawObj(ObjBuffer obj, unsigned int mode)
 
     /*--- Disable each vertex attribute array being enabled ---*/
     glDisableVertexAttribArray(vPosition);
-    glDisableVertexAttribArray(vColor);
+	glDisableVertexAttribArray(vColor);
+	glDisableVertexAttribArray(vNormal);
 }
-//vec4 * transpose(vec4)
-mat4 vmult(vec4 v1, vec4 v2) {
-	return mat4(
-		v1[0] * v2[0],
-		v1[0] * v2[1],
-		v1[0] * v2[2],
-		v1[0] * v2[3],
-
-		v1[1] * v2[0],
-		v1[1] * v2[1],
-		v1[1] * v2[2],
-		v1[1] * v2[3],
-
-		v1[2] * v2[0],
-		v1[2] * v2[1],
-		v1[2] * v2[2],
-		v1[2] * v2[3],
-
-		v1[3] * v2[0],
-		v1[3] * v2[1],
-		v1[3] * v2[2],
-		v1[3] * v2[3]);
-}
-
-mat4 shadowMatrix2() {
-	vec4 normal(0.f, 1.f, 0.f, 0.f);
-
-	return dot(light_source, normal) * mat4(1.f) - vmult(normal, light_source);
-	//return dot(normal, light_source)*mat4(1.f) -
-	/* 
-		p=l-(d+n*l)/(n*(v-l)) (v-l)	
-	*/
-}
+//
+//mat4 shadowMatrix2() {
+//	vec4 normal(0.f, 1.f, 0.f, 0.f);
+//
+//	return dot(light_source, normal) * mat4(1.f) - vmult(normal, light_source);
+//	/* 
+//		p=l-(d+n*l)/(n*(v-l)) (v-l)	
+//	*/
+//}
 
 mat4 shadowMatrix() {
 	return mat4(vec4(light_source[1],-light_source[0],0.f,0.f),
@@ -240,32 +245,6 @@ mat4 shadowMatrix() {
 				vec4(0.f,-1.f,0.f,light_source[1])
 				);
 }
-
-void drawShadow(ObjBuffer obj, unsigned int mode)
-{
-
-	glBindBuffer(GL_ARRAY_BUFFER, obj.id);
-	/*----- Set up vertex attribute arrays for each vertex attribute -----*/
-	GLuint vPosition = glGetAttribLocation(program, "vPosition");
-	glEnableVertexAttribArray(vPosition);
-	glVertexAttribPointer(vPosition, 3, GL_FLOAT, GL_FALSE, 0,
-		BUFFER_OFFSET(0));
-/*
-	GLuint vColor = glGetAttribLocation(program, "vColor");
-	glEnableVertexAttribArray(vColor);
-	glVertexAttribPointer(vColor, 3, GL_FLOAT, GL_FALSE, 0,
-		BUFFER_OFFSET(sizeof(point3) * obj.size));*/
-	// the offset is the (total) size of the previous vertex attribute array(s)
-
-  /* Draw a sequence of geometric objs (triangles) from the vertex buffer
-	 (using the attributes specified in each enabled vertex attribute array) */
-	glDrawArrays(mode, 0, obj.size);
-
-	/*--- Disable each vertex attribute array being enabled ---*/
-	glDisableVertexAttribArray(vPosition);
-	//glDisableVertexAttribArray(vColor);
-}
-
 
 //Rotate in the direction of delta by angle (radians)
 mat4 Roll(const vec3& delta, float angle, float radius) {
@@ -302,41 +281,50 @@ mat4 RollAnimation(float angle, float radius = 1.0f) {
 //----------------------------------------------------------------------------
 void display( void )
 {
-  GLuint  model_view;  // model-view matrix uniform shader variable location
-  GLuint  projection;  // projection matrix uniform shader variable location
+	GLuint  model_view;  // model-view matrix uniform shader variable location
+	GLuint  projection;  // projection matrix uniform shader variable location
+	GLuint  camera;  // look-at matrix uniform shader variable location
 
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
     glUseProgram(program); // Use the shader program
 
     model_view = glGetUniformLocation(program, "model_view" );
-    projection = glGetUniformLocation(program, "projection" );
-
+	projection = glGetUniformLocation(program, "projection");
+	camera = glGetUniformLocation(program, "camera");
 /*---  Set up and pass on Projection matrix to the shader ---*/
     mat4  p = Perspective(fovy, aspect, zNear, zFar);
     glUniformMatrix4fv(projection, 1, GL_TRUE, p); // GL_TRUE: matrix is row-major
 
 /*---  Set up and pass on Model-View matrix to the shader ---*/
     // eye is a global variable of vec4 set to init_eye and updated by keyboard()
+	mat4  mv;
 	vec4    at(0.0, 0.0, 0.0, 1.0);
     vec4    up(0.0, 1.0, 0.0, 0.0);
-
 	mat4 la = LookAt(eye, at, up);
-	mat4  mv;
+	glUniformMatrix4fv(camera, 1, GL_TRUE, la); // GL_TRUE: matrix is row-major
+	glUniform4f(glGetUniformLocation(program, "point_light"), light_source.x, light_source.y, light_source.z, light_source.w);
+	glUniform1i(glGetUniformLocation(program, "f_lighting"), lightingFlag);
+	glUniform1i(glGetUniformLocation(program, "f_spotlight"), sourceFlag);
 
 
-/*----- Set Up the Model-View matrix for the sphere -----*/
-mv = la * ballMatrix;
-glUniformMatrix4fv(model_view, 1, GL_TRUE, mv); // GL_TRUE: matrix is row-major
-if (sphereFlag != 1) // Filled sphere
-	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-else              // Wireframe sphere
-	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-drawObj(sphere, GL_TRIANGLES);  // draw the sphere
+	/*----- Set Up the Model-View matrix for the sphere -----*/
+	mv = ballMatrix;
+	glUniformMatrix4fv(model_view, 1, GL_TRUE, mv); // GL_TRUE: matrix is row-major
+	if (sphereFlag != 1) // Filled sphere
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+	else {            // Wireframe sphere
+		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+		glUniform1i(glGetUniformLocation(program, "f_lighting"), GL_FALSE);
+	}
+	glUniform1i(glGetUniformLocation(program, "f_shading"), shadingFlag);
+	drawObj(sphere, GL_TRIANGLES);  // draw the sphere
+	glUniform1i(glGetUniformLocation(program, "f_lighting"), lightingFlag);
+	glUniform1i(glGetUniformLocation(program, "f_shading"), GL_FALSE);
 
 
-/*----- Set up the Mode-View matrix for the floor -----*/
-	mv = la;
+	/*----- Set up the Mode-View matrix for the floor -----*/
+	mv = mat4(1.f);
 
     glUniformMatrix4fv(model_view, 1, GL_TRUE, mv); // GL_TRUE: matrix is row-major
     if (floorFlag == 1) // Filled floor
@@ -347,21 +335,30 @@ drawObj(sphere, GL_TRIANGLES);  // draw the sphere
 	drawObj(floor_buf, GL_TRIANGLES);  // draw the floor
 	glDepthMask(GL_TRUE);
 	if (shadowFlag) {
-		mv = la * shadowMatrix() * ballMatrix;
-		glUniformMatrix4fv(model_view, 1, GL_TRUE, mv);
-		drawShadow(sphere, GL_TRIANGLES);
+		mv = shadowMatrix() * ballMatrix;
+		glUniformMatrix4fv(model_view, 1, GL_TRUE, mv); 
+		if (sphereFlag != 1) // Filled sphere
+			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+		else				 // Wireframe sphere
+			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+		glUniform1i(glGetUniformLocation(program, "f_lighting"), GL_FALSE);
+		drawObj(sphere_shadow, GL_TRIANGLES);
+		glUniform1i(glGetUniformLocation(program, "f_lighting"), lightingFlag);
 	}
 	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 	drawObj(floor_buf, GL_TRIANGLES);  // draw the floor
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
-/*----- Set up the Mode-View matrix for the axis -----*/
-	mv = la * Scale(10.0f);
+	/*----- Set up the Mode-View matrix for the axis -----*/
+	mv = Scale(10.0f);
 	glUniformMatrix4fv(model_view, 1, GL_TRUE, mv); // GL_TRUE: matrix is row-major
+	glUniform1i(glGetUniformLocation(program, "f_lighting"), GL_FALSE);
 	drawObj(axis, GL_LINES);
+	glUniform1i(glGetUniformLocation(program, "f_lighting"), lightingFlag);
 
     glutSwapBuffers();
 }
+
 //---------------------------------------------------------------------------
 void idle (void)
 {
@@ -370,6 +367,7 @@ void idle (void)
 	ballMatrix = RollAnimation(angleCounter);
     glutPostRedisplay();
 }
+
 //----------------------------------------------------------------------------
 void mouse(int button, int state, int x, int y) {
 	if (button == GLUT_RIGHT_BUTTON) {
@@ -378,6 +376,7 @@ void mouse(int button, int state, int x, int y) {
 		}
 	}
 }
+
 //----------------------------------------------------------------------------
 void keyboard(unsigned char key, int x, int y)
 {
@@ -412,6 +411,7 @@ void keyboard(unsigned char key, int x, int y)
     }
     glutPostRedisplay();
 }
+
 //----------------------------------------------------------------------------
 void menu(int choice) {
 	switch (choice) {
@@ -430,8 +430,27 @@ void menu(int choice) {
 	case MENU_ENABLE_WIREFRAME:
 		sphereFlag = 1 - sphereFlag;
 		break;
+	case MENU_LIGHTING_OFF:
+		lightingFlag = 0;
+		break;
+	case MENU_LIGHTING_ON:
+		lightingFlag = 1;
+		break;
+	case MENU_SHADING_SMOOTH:
+		shadingFlag = 1;
+		break;
+	case MENU_SHADING_FLAT:
+		shadingFlag = 0;
+		break;
+	case MENU_SOURCE_SPOT:
+		sourceFlag = 1;
+		break;
+	case MENU_SOURCE_POINT:
+		sourceFlag = 0;
+		break;
 	}
 }
+
 //----------------------------------------------------------------------------
 void reshape(int width, int height)
 {
@@ -439,6 +458,7 @@ void reshape(int width, int height)
     aspect = (GLfloat) width  / (GLfloat) height;
     glutPostRedisplay();
 }
+
 //----------------------------------------------------------------------------
 int main( int argc, char **argv )
 {
@@ -448,7 +468,7 @@ int main( int argc, char **argv )
 #else
     glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
 #endif
-    glutInitWindowSize(512, 512);
+    glutInitWindowSize(1024, 1024);
     glutCreateWindow("Color Cube");
 
 #ifdef __APPLE__ // on macOS
@@ -477,22 +497,26 @@ int main( int argc, char **argv )
     glutKeyboardFunc(keyboard);
 	glutMouseFunc(mouse);
 
-	int lightingMenuId = glutCreateMenu(menu);
+	int shadowMenuId = glutCreateMenu(menu);
 	glutAddMenuEntry("Yes", MENU_SHADOW_ON);
 	glutAddMenuEntry("No", MENU_SHADOW_OFF);
-	int shadowMenuId = glutCreateMenu(menu);
+	int lightingMenuId = glutCreateMenu(menu);
 	glutAddMenuEntry("Yes", MENU_LIGHTING_ON);
 	glutAddMenuEntry("No", MENU_LIGHTING_OFF);
 	int shadingMenuId = glutCreateMenu(menu);
-	glutAddMenuEntry("Yes", MENU_SHADING_SMOOTH);
-	glutAddMenuEntry("No", MENU_SHADING_FLAT);
+	glutAddMenuEntry("Smooth", MENU_SHADING_SMOOTH);
+	glutAddMenuEntry("Flat", MENU_SHADING_FLAT);
+	int sourceMenuId = glutCreateMenu(menu);
+	glutAddMenuEntry("Spotlight", MENU_SOURCE_SPOT);
+	glutAddMenuEntry("Point", MENU_SOURCE_POINT);
 	glutCreateMenu(menu);
 	glutAddMenuEntry("Default View Point", MENU_VIEW_DEFAULT);
 	glutAddMenuEntry("Quit", MENU_QUIT);
 	glutAddMenuEntry("Wireframe", MENU_ENABLE_WIREFRAME);
-	glutAddMenuEntry("Shading", shadingMenuId);
+	glutAddSubMenu("Shading", shadingMenuId);
 	glutAddSubMenu("Shadow", shadowMenuId);
 	glutAddSubMenu("Lighting", lightingMenuId);
+	glutAddSubMenu("Lighting Source", sourceMenuId);
 	glutAttachMenu(GLUT_LEFT_BUTTON);
 
 
