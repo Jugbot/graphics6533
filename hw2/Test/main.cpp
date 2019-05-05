@@ -188,6 +188,7 @@ void init()
  // Load shaders and create a shader program (to be used in display())
     program = InitShader("vshader42.glsl", "fshader42.glsl");
     glEnable( GL_DEPTH_TEST );
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glClearColor( 0.529f, 0.807f, 0.92f, 0.0);
     glLineWidth(2.0);
 }
@@ -333,8 +334,8 @@ void display( void )
        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 	glDepthMask(GL_FALSE);
 	drawObj(floor_buf, GL_TRIANGLES);  // draw the floor
-	glDepthMask(GL_TRUE);
-	if (shadowFlag) {
+	if (shadowFlag && eye[1] > 0.f) {
+		glEnable(GL_BLEND);
 		mv = shadowMatrix() * ballMatrix;
 		glUniformMatrix4fv(model_view, 1, GL_TRUE, mv); 
 		if (sphereFlag != 1) // Filled sphere
@@ -344,7 +345,9 @@ void display( void )
 		glUniform1i(glGetUniformLocation(program, "f_lighting"), GL_FALSE);
 		drawObj(sphere_shadow, GL_TRIANGLES);
 		glUniform1i(glGetUniformLocation(program, "f_lighting"), lightingFlag);
+		glDisable(GL_BLEND);
 	}
+	glDepthMask(GL_TRUE);
 	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 	drawObj(floor_buf, GL_TRIANGLES);  // draw the floor
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
@@ -468,7 +471,7 @@ int main( int argc, char **argv )
 #else
     glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
 #endif
-    glutInitWindowSize(1024, 1024);
+    glutInitWindowSize(512, 512);
     glutCreateWindow("Color Cube");
 
 #ifdef __APPLE__ // on macOS

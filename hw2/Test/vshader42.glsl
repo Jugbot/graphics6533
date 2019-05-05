@@ -59,11 +59,11 @@ void main()
 		Obj_Normal = normalize( camera * model_view * vec4(vPosition, 0.0) ).xyz;
 	else
 		Obj_Normal = normalize( camera * model_view * vec4(vNormal, 0.0) ).xyz;
+    vec3 E = normalize( -Position );
+	if ( dot(Obj_Normal, E) < 0 ) Obj_Normal = -Obj_Normal;
 //	DIRECTIONAL LIGHT
     vec3 Light_Normal = normalize(-dir_light.xyz);
-    vec3 E = normalize( -Position );
     vec3 H = normalize( Light_Normal + E );
-	//	if ( dot(Obj_Normal, E) < 0 ) Obj_Normal = -Obj_Normal;
 
 	vec4 directional_ambient = dir_ambient * ambient;
 	float d = max( dot(Light_Normal, Obj_Normal), 0.0 );
@@ -75,26 +75,23 @@ void main()
 		directional_specular = vec4(0.0, 0.0, 0.0, 1.0);
     } 
 	
-//	color = global_ambient + directional_ambient + directional_diffuse;
 	color = global_ambient + directional_ambient + directional_diffuse + directional_specular;
-//	color = directional_specular;
 
 //	POINT & SPOT LIGHT
 	vec3 dist_v = (camera * point_light).xyz - Position;
 	Light_Normal = normalize(dist_v);
-	E = normalize( -Position );
 	H = normalize( Light_Normal + E );
 	float dist_m = length(dist_v);
 	float attenuation = 1/(2 + 0.01 * dist_m + 0.001 * dist_m * dist_m);
 
-	vec4 point_ambient = point_ambient * ambient;
+	vec4 pnt_ambient = point_ambient * ambient;
 	d = max( dot(Light_Normal, Obj_Normal), 0.0 );
-	vec4 point_diffuse = d * point_diffuse * diffuse;
-	s = pow( max(dot(Obj_Normal, H), 0.0), shininess );
-	vec4 point_specular = s * point_specular * specular;
+	vec4 pnt_diffuse = d * point_diffuse * diffuse;
+	s = pow(max(dot(Obj_Normal, H), 0.0), shininess);
+	vec4 pnt_specular = s * point_specular * specular;
 
 	if( dot(Light_Normal, Obj_Normal) < 0.0 ) {
-		directional_specular = vec4(0.0, 0.0, 0.0, 1.0);
+		pnt_specular = vec4(0.0, 0.0, 0.0, 1.0);
 	} 
 
 	if (f_spotlight) {
@@ -105,6 +102,5 @@ void main()
 			attenuation = 0;
 	}
 
-	color += attenuation * (point_ambient + point_diffuse + point_specular);
-	
+	color += attenuation * (pnt_ambient + pnt_diffuse + pnt_specular);
 } 
