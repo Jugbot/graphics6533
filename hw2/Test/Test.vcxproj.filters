@@ -35,6 +35,9 @@
     <ClInclude Include="vec.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="main.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
@@ -42,6 +45,12 @@
       <Filter>Resource Files</Filter>
     </None>
     <None Include="vshader42.glsl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="fshader42Particle.glsl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="vshader42Particle.glsl">
       <Filter>Resource Files</Filter>
     </None>
   </ItemGroup>

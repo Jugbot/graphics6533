@@ -137,13 +137,16 @@
   <ItemGroup>
     <ClInclude Include="Angel-yjc.h" />
     <ClInclude Include="CheckError.h" />
+    <ClInclude Include="main.h" />
     <ClInclude Include="mat-yjc-new.h" />
     <ClInclude Include="vec.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="fshader42.glsl" />
+    <None Include="fshader42Particle.glsl" />
     <None Include="packages.config" />
     <None Include="vshader42.glsl" />
+    <None Include="vshader42Particle.glsl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

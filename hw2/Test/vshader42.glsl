@@ -1,21 +1,14 @@
-/***************************
- * File: vshader42.glsl:
- *   A simple vertex shader.
- *
- * - Vertex attributes (positions & colors) for all vertices are sent
- *   to the GPU via a vertex buffer object created in the OpenGL program.
- *
- * - This vertex shader uses the Model-View and Projection matrices passed
- *   on from the OpenGL program as uniform variables of type mat4.
- ***************************/
-
  #version 150  
  #define M_PI 3.1415926535897932384626433832795
 
 in  vec3 vPosition;
 in  vec4 vColor;
 in  vec3 vNormal;
+in  vec2 vTexture;
+out vec2 texcoord;
+out vec2 latcoord;
 out vec4 color;
+out float dist;
 
 uniform mat4 camera;
 uniform mat4 model_view;
@@ -40,6 +33,12 @@ uniform float spotlight_cutoff = 20;
 uniform bool f_lighting = true;
 uniform bool f_shading = false;
 uniform bool f_spotlight = true;
+
+uniform int f_sphereTexture = 1;
+uniform int f_latticeType = 1;
+uniform bool f_lattice = false;
+uniform bool f_relTexture = true;
+uniform bool f_tiltTexture = true;
 
 void main() 
 {
@@ -103,4 +102,51 @@ void main()
 	}
 
 	color += attenuation * (pnt_ambient + pnt_diffuse + pnt_specular);
+	dist = length(Position.xyz);
+
+	if (f_lattice){
+		if (f_latticeType == 1){
+			latcoord = vec2(0.5 * (vPosition4.x + 1), 0.5 * (vPosition4.y + 1));
+		}
+		else if (f_latticeType == 2) {
+			latcoord = vec2(0.3 * (vPosition4.x + vPosition4.y + vPosition4.z), 0.3 * (vPosition4.x - vPosition4.y + vPosition4.z));
+		}
+	}
+	
+	if (f_sphereTexture != 0) {
+		float s = 0.0;
+		float t = 0.0;
+		vec4 pos;
+
+		if (f_relTexture){
+			pos = vPosition4;
+		} else {
+			pos = camera * model_view * vPosition4;
+		}
+
+		if (f_sphereTexture == 1){
+			if (f_tiltTexture){
+				s = 1.5 * (pos.x + pos.y + pos.z);
+			}
+			else{
+				s = 2.5 * pos.x;
+			}
+		}
+		else if (f_sphereTexture == 2) {
+			if (f_tiltTexture){
+				s = 0.45 * (pos.x + pos.y + pos.z);
+				t = 0.45 * (pos.x - pos.y + pos.z);
+			}
+			else{
+				s = 0.75 * (pos.x + 1);
+				t = 0.75 * (pos.y + 1);
+			}
+		}
+		// Use x for 1D
+		texcoord = vec2(s, t);
+	}
+	else {
+		texcoord = vTexture;
+	}
+//	texcoord = vTexture;
 } 

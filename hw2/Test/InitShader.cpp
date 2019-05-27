@@ -57,7 +57,8 @@ InitShader(const char* vShaderFile, const char* fShaderFile)
 		s.source = readShaderSource( s.filename );
 		if ( shaders[i].source == NULL ) {
 			std::cerr << "Failed to read " << s.filename << std::endl;
-			exit( EXIT_FAILURE );	
+			getchar();
+			//exit( EXIT_FAILURE );	
 		}
 		else printf("Successfully read %s\n", s.filename);
 
@@ -75,8 +76,7 @@ InitShader(const char* vShaderFile, const char* fShaderFile)
 			glGetShaderInfoLog( shader, logSize, NULL, logMsg );
 			std::cerr << logMsg << std::endl;
 			delete [] logMsg;
-			char _;
-			std::cin >> _;
+			getchar();
 			//exit( EXIT_FAILURE );
 		}
 		else printf("Successfully compiled %s\n", s.filename);
@@ -99,8 +99,8 @@ InitShader(const char* vShaderFile, const char* fShaderFile)
 		glGetProgramInfoLog( program, logSize, NULL, logMsg );
 		std::cerr << logMsg << std::endl;
 		delete [] logMsg;
-
-		exit( EXIT_FAILURE );
+		getchar();
+		//exit( EXIT_FAILURE );
     }
     else printf("Successfully linked program object\n\n");
 
